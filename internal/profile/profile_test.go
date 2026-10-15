@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const sample = `# tags: country=jp name=public-vpn-251 score=42
+const sample = `# tags: country=jp name=tokyo-1 score=42
 client
 dev tun
 proto tcp
@@ -27,7 +27,7 @@ func TestParse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Country != "JP" || p.Name != "public-vpn-251" || p.Score != 42 {
+	if p.Country != "JP" || p.Name != "tokyo-1" || p.Score != 42 {
 		t.Errorf("tags not parsed: %+v", p)
 	}
 	if p.Remote != "219.100.37.223 443" {
@@ -70,7 +70,7 @@ func TestLoad(t *testing.T) {
 	if len(ps) != 2 || ps[0].ID != "c" || ps[1].ID != "sub/a" {
 		t.Fatalf("unexpected profiles: %+v", ps)
 	}
-	if ps[0].Name != "c" || ps[1].Name != "public-vpn-251" {
+	if ps[0].Name != "c" || ps[1].Name != "tokyo-1" {
 		t.Errorf("names: %q %q", ps[0].Name, ps[1].Name)
 	}
 }

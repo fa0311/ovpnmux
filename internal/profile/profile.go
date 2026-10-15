@@ -2,11 +2,10 @@
 //
 // A profile may carry metadata in a comment line:
 //
-//	# tags: country=JP name=public-vpn-251 score=3137099
+//	# tags: country=JP name=tokyo-1 score=100
 //
-// Profiles can come from the network (feeder), so directives that execute
-// programs or otherwise reach outside the tunnel are rejected, and the
-// directives the daemon sets itself are dropped.
+// Directives that execute programs or otherwise reach outside the tunnel are
+// rejected, and the directives the daemon sets itself are dropped.
 package profile
 
 import (

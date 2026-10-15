@@ -6,7 +6,7 @@ auth:
   required: true
   password: ${OVPNMUX_PASSWORD}   # SOCKS5 / Proxy-Authorization password; the username selects the exit
 
-profiles_dir: /profiles       # every *.ovpn below this directory is a candidate
+profiles_dir: /profiles       # every *.ovpn below this directory is a candidate (compose mounts ./profiles)
 
 pool:
   size: 4                     # tunnels kept up at the same time

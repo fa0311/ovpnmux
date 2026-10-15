@@ -1,5 +1,5 @@
 services:
-  proxy:
+  ovpnmux:
     image: ghcr.io/fa0311/ovpnmux:main
     cap_add: [NET_ADMIN]
     devices: ["/dev/net/tun:/dev/net/tun"]
@@ -14,7 +14,7 @@ services:
       OVPNMUX_PASSWORD: ${OVPNMUX_PASSWORD:-change-me}
     volumes:
       - ./config.yaml:/etc/ovpnmux/config.yaml:ro
-      - profiles:/profiles
+      - ./profiles:/profiles:ro            # put your *.ovpn files here
       - data:/var/lib/ovpnmux
     restart: unless-stopped
     healthcheck:
@@ -22,16 +22,5 @@ services:
       interval: 30s
       start_period: 2m
 
-  # Optional. Writes VPN Gate servers into the shared profiles volume every 10 minutes.
-  # Without it, put your own *.ovpn files into the volume (the image ships profiles/examples).
-  feeder:
-    image: ghcr.io/fa0311/ovpnmux:main
-    entrypoint: ["vpngate-feeder"]
-    command: ["-out", "/profiles/vpngate", "-interval", "10m", "-countries", "${FEEDER_COUNTRIES:-JP,KR}"]
-    volumes:
-      - profiles:/profiles
-    restart: unless-stopped
-
 volumes:
-  profiles: {}
   data: {}
