@@ -8,13 +8,11 @@ services:
       net.ipv4.conf.default.rp_filter: "0"
       net.ipv6.conf.all.disable_ipv6: "1"
     ports:
-      - "${LAN_IP:-127.0.0.1}:1080:1080"   # proxy, LAN only
-      - "127.0.0.1:9090:9090"              # admin, host only
-    environment:
-      OVPNMUX_PASSWORD: ${OVPNMUX_PASSWORD:-change-me}
+      - "1080:1080"            # SOCKS5
+      - "127.0.0.1:9090:9090"  # admin, host only
     volumes:
       - ./config.yaml:/etc/ovpnmux/config.yaml:ro
-      - ./profiles:/profiles:ro            # put your *.ovpn files here
+      - ./profiles:/profiles:ro   # put your *.ovpn files here
       - data:/var/lib/ovpnmux
     restart: unless-stopped
     healthcheck:

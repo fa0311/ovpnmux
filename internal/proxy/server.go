@@ -1,5 +1,5 @@
-// Package proxy serves SOCKS5 and HTTP (CONNECT and plain) on one port and
-// sends each connection out through a tunnel chosen by the Selector.
+// Package proxy serves SOCKS5 and sends each connection out through a tunnel
+// chosen by the Selector.
 package proxy
 
 import (
@@ -15,14 +15,11 @@ import (
 )
 
 type Server struct {
-	Selector     *Selector
-	AuthRequired bool
-	Password     string
+	Selector *Selector
+	Password string // empty disables authentication
 }
 
-// ListenAndServe accepts connections on addr until ctx is done. A non-empty
-// fixedKey overrides the selection key sent by the client (per-port selection).
-func (s *Server) ListenAndServe(ctx context.Context, addr, fixedKey string) error {
+func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -31,7 +28,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr, fixedKey string) erro
 		<-ctx.Done()
 		ln.Close()
 	}()
-	slog.Info("proxy listening", "addr", addr, "select", fixedKey)
+	slog.Info("socks5 listening", "addr", addr)
 	for {
 		c, err := ln.Accept()
 		if err != nil {
@@ -42,7 +39,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr, fixedKey string) erro
 			time.Sleep(100 * time.Millisecond)
 			continue
 		}
-		go s.handle(ctx, c, fixedKey)
+		go s.handle(ctx, c)
 	}
 }
 
@@ -50,41 +47,20 @@ type session struct {
 	srv      *Server
 	conn     net.Conn
 	br       *bufio.Reader
-	fixedKey string
 	clientIP string
 }
 
-func (s *Server) handle(ctx context.Context, c net.Conn, fixedKey string) {
+func (s *Server) handle(ctx context.Context, c net.Conn) {
 	defer c.Close()
 	_ = c.SetDeadline(time.Now().Add(30 * time.Second)) // handshake only; cleared before splicing
-	br := bufio.NewReader(c)
-	b, err := br.Peek(1)
-	if err != nil {
-		return
-	}
 	host, _, _ := net.SplitHostPort(c.RemoteAddr().String())
-	ss := &session{srv: s, conn: c, br: br, fixedKey: fixedKey, clientIP: host}
-	if b[0] == 0x05 {
-		ss.socks5(ctx)
-	} else {
-		ss.http(ctx)
-	}
-}
-
-func (s *Server) authOK(password string) bool {
-	return !s.AuthRequired || password == s.Password
-}
-
-func (ss *session) key(user string) string {
-	if ss.fixedKey != "" {
-		return ss.fixedKey
-	}
-	return user
+	ss := &session{srv: s, conn: c, br: bufio.NewReader(c), clientIP: host}
+	ss.socks5(ctx)
 }
 
 // open picks a tunnel for the key and dials the target through it.
-func (ss *session) open(ctx context.Context, user, hostport string) (net.Conn, *tunnel.Tunnel, error) {
-	t, err := ss.srv.Selector.Select(ss.key(user), ss.clientIP)
+func (ss *session) open(ctx context.Context, key, hostport string) (net.Conn, *tunnel.Tunnel, error) {
+	t, err := ss.srv.Selector.Select(key, ss.clientIP)
 	if err != nil {
 		return nil, nil, err
 	}

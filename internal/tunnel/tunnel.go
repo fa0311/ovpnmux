@@ -31,12 +31,9 @@ type Tunnel struct {
 	dialer  *routing.Dialer
 	profile profile.Profile
 	state   State
-	exitIP  string
-	country string
 	since   time.Time
 	latency time.Duration
 	lastErr string
-	kill    func()
 }
 
 type Status struct {
@@ -44,10 +41,7 @@ type Status struct {
 	Dev       string `json:"dev"`
 	State     State  `json:"state"`
 	Profile   string `json:"profile"`
-	Name      string `json:"name"`
-	Country   string `json:"country"`
 	Remote    string `json:"remote"`
-	ExitIP    string `json:"exit_ip"`
 	Since     string `json:"since"`
 	Uptime    string `json:"uptime"`
 	Latency   string `json:"latency"`
@@ -57,9 +51,8 @@ type Status struct {
 }
 
 // NewReady returns a tunnel that is already ready and dials with d. Used by tests.
-func NewReady(id int, name, country string, d *routing.Dialer) *Tunnel {
-	return &Tunnel{ID: id, Dev: "test", dialer: d, state: StateReady, country: country,
-		profile: profile.Profile{Name: name, Country: country}, since: time.Now()}
+func NewReady(id int, d *routing.Dialer) *Tunnel {
+	return &Tunnel{ID: id, Dev: "test", dialer: d, state: StateReady, since: time.Now()}
 }
 
 func (t *Tunnel) set(f func()) {
@@ -80,23 +73,10 @@ func (t *Tunnel) Ready() bool {
 	return t.state == StateReady
 }
 
-func (t *Tunnel) Name() string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.profile.Name
-}
-
-func (t *Tunnel) Country() string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.country
-}
-
 func (t *Tunnel) Status() Status {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	s := Status{ID: t.ID, Dev: t.Dev, State: t.state, Profile: t.profile.ID, Name: t.profile.Name,
-		Country: t.country, Remote: t.profile.Remote, ExitIP: t.exitIP,
+	s := Status{ID: t.ID, Dev: t.Dev, State: t.state, Profile: t.profile.ID, Remote: t.profile.Remote,
 		Conns: t.Conns.Load(), Bytes: t.Bytes.Load(), LastError: t.lastErr}
 	if !t.since.IsZero() {
 		s.Since = t.since.Format(time.RFC3339)

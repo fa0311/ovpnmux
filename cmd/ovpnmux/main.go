@@ -1,4 +1,4 @@
-// ovpnmux keeps several OpenVPN tunnels up and exposes them as one SOCKS5/HTTP proxy.
+// ovpnmux keeps several OpenVPN tunnels up and exposes them as one SOCKS5 proxy.
 package main
 
 import (
@@ -17,34 +17,20 @@ import (
 
 	"ovpnmux/internal/admin"
 	"ovpnmux/internal/config"
-	"ovpnmux/internal/profile"
 	"ovpnmux/internal/proxy"
 	"ovpnmux/internal/routing"
 	"ovpnmux/internal/tunnel"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
-	}
-	switch os.Args[1] {
-	case "serve":
-		os.Exit(serve(os.Args[2:]))
-	case "list":
-		os.Exit(list(os.Args[2:]))
-	case "_up":
+	if len(os.Args) >= 2 && os.Args[1] == "_up" {
 		os.Exit(up())
-	default:
-		usage()
+	}
+	if len(os.Args) < 2 || os.Args[1] != "serve" {
+		fmt.Fprintln(os.Stderr, "usage: ovpnmux serve [-config FILE] [-debug]")
 		os.Exit(2)
 	}
-}
-
-func usage() {
-	fmt.Fprintln(os.Stderr, `usage:
-  ovpnmux serve [-config FILE] [-debug]   run the proxy
-  ovpnmux list  [-config FILE] [-dir DIR] show profiles the daemon would use`)
+	os.Exit(serve(os.Args[2:]))
 }
 
 func serve(args []string) int {
@@ -67,46 +53,14 @@ func serve(args []string) int {
 	defer stop()
 
 	m := tunnel.New(cfg)
-	srv := &proxy.Server{
-		Selector:     proxy.NewSelector(m, cfg.Selection.Default, cfg.Selection.StickyTTL),
-		AuthRequired: cfg.Auth.Required,
-		Password:     cfg.Auth.Password,
-	}
+	srv := &proxy.Server{Selector: proxy.NewSelector(m, cfg.StickyTTL), Password: cfg.Password}
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return m.Run(ctx) })
-	g.Go(func() error { return srv.ListenAndServe(ctx, cfg.Listen, "") })
-	for _, el := range cfg.ExtraListeners {
-		g.Go(func() error { return srv.ListenAndServe(ctx, el.Listen, el.Select) })
-	}
+	g.Go(func() error { return srv.ListenAndServe(ctx, cfg.Listen) })
 	g.Go(func() error { return admin.ListenAndServe(ctx, cfg.AdminListen, m) })
 	if err := g.Wait(); err != nil {
 		slog.Error("exit", "err", err)
 		return 1
-	}
-	return 0
-}
-
-func list(args []string) int {
-	fs := flag.NewFlagSet("list", flag.ExitOnError)
-	cfgPath := fs.String("config", "/etc/ovpnmux/config.yaml", "config file")
-	dir := fs.String("dir", "", "profiles directory (overrides config)")
-	fs.Parse(args)
-	if *dir == "" {
-		cfg, err := config.Load(*cfgPath)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		*dir = cfg.ProfilesDir
-	}
-	ps, err := profile.Load(*dir)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
-	}
-	fmt.Printf("%-40s %-3s %-9s %-32s %s\n", "ID", "CC", "SCORE", "REMOTE", "NAME")
-	for _, p := range ps {
-		fmt.Printf("%-40s %-3s %-9d %-32s %s\n", p.ID, p.Country, p.Score, p.Remote, p.Name)
 	}
 	return 0
 }

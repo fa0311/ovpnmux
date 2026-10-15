@@ -11,7 +11,7 @@ import (
 )
 
 // socks5 implements RFC 1928 CONNECT with optional RFC 1929 username/password.
-// The username is the selection key (country code, "any", "tunnel:N", "name:X").
+// The username selects the tunnel: empty or "any" for any, or a tunnel number.
 func (ss *session) socks5(ctx context.Context) {
 	br, c := ss.br, ss.conn
 	hdr := make([]byte, 2)
@@ -26,7 +26,7 @@ func (ss *session) socks5(ctx context.Context) {
 	switch {
 	case bytes.IndexByte(methods, 0x02) >= 0:
 		method = 0x02
-	case bytes.IndexByte(methods, 0x00) >= 0 && !ss.srv.AuthRequired:
+	case bytes.IndexByte(methods, 0x00) >= 0 && ss.srv.Password == "":
 		method = 0x00
 	default:
 		c.Write([]byte{5, 0xFF})
@@ -34,7 +34,7 @@ func (ss *session) socks5(ctx context.Context) {
 	}
 	c.Write([]byte{5, method})
 
-	user := ""
+	key := ""
 	if method == 0x02 {
 		v := make([]byte, 2) // version, username length
 		if _, err := io.ReadFull(br, v); err != nil {
@@ -52,12 +52,12 @@ func (ss *session) socks5(ctx context.Context) {
 		if _, err := io.ReadFull(br, p); err != nil {
 			return
 		}
-		if !ss.srv.authOK(string(p)) {
+		if ss.srv.Password != "" && string(p) != ss.srv.Password {
 			c.Write([]byte{1, 1})
 			return
 		}
 		c.Write([]byte{1, 0})
-		user = string(u)
+		key = string(u)
 	}
 
 	req := make([]byte, 4) // version, command, reserved, address type
@@ -89,7 +89,7 @@ func (ss *session) socks5(ctx context.Context) {
 		}
 		host = net.IP(b).String()
 	default:
-		socksReply(c, 8)
+		reply(c, 8)
 		return
 	}
 	pb := make([]byte, 2)
@@ -97,21 +97,21 @@ func (ss *session) socks5(ctx context.Context) {
 		return
 	}
 	if req[1] != 1 { // only CONNECT
-		socksReply(c, 7)
+		reply(c, 7)
 		return
 	}
 	hostport := net.JoinHostPort(host, strconv.Itoa(int(binary.BigEndian.Uint16(pb))))
-	target, t, err := ss.open(ctx, user, hostport)
+	target, t, err := ss.open(ctx, key, hostport)
 	if err != nil {
-		slog.Debug("socks5 connect failed", "client", ss.clientIP, "target", hostport, "err", err)
-		socksReply(c, 4)
+		slog.Debug("connect failed", "client", ss.clientIP, "target", hostport, "err", err)
+		reply(c, 4)
 		return
 	}
 	defer target.Close()
-	socksReply(c, 0)
+	reply(c, 0)
 	ss.splice(target, t)
 }
 
-func socksReply(w io.Writer, code byte) {
+func reply(w io.Writer, code byte) {
 	w.Write([]byte{5, code, 0, 1, 0, 0, 0, 0, 0, 0})
 }

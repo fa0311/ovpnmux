@@ -1,34 +1,13 @@
-# ovpnmux configuration. ${VAR} is expanded from the environment.
-listen: 0.0.0.0:1080          # SOCKS5 + HTTP proxy (restrict with compose `ports:`)
-admin_listen: 0.0.0.0:9090    # GET /status, GET /healthz, POST /tunnels/{id}/reconnect
-
-auth:
-  required: true
-  password: ${OVPNMUX_PASSWORD}   # SOCKS5 / Proxy-Authorization password; the username selects the exit
-
-profiles_dir: /profiles       # every *.ovpn below this directory is a candidate (compose mounts ./profiles)
-
-pool:
-  size: 4                     # tunnels kept up at the same time
-  per_country:                # optional: reserve slots for countries (uses `# tags: country=XX`)
-    JP: 2
-
-selection:
-  default: sticky             # rr | sticky (same client IP + key stays on one tunnel)
-  sticky_ttl: 10m
-
-# extra_listeners:            # optional ports with a fixed selection, for clients without username support
-#   - { listen: 0.0.0.0:1081, select: jp }
-
-routing:
-  table_base: 100             # tunnel N uses routing table and fwmark table_base+N
-  fallback_dns: [1.1.1.1, 8.8.8.8]
-
-health:
-  url: http://www.gstatic.com/generate_204
-  geo_url: http://ip-api.com/json/?fields=status,countryCode,query   # "" disables exit IP / country lookup
-  interval: 30s
-  cooldown: 15m               # how long a failed profile is left alone
-
+listen: 0.0.0.0:1080          # SOCKS5
+admin_listen: 0.0.0.0:9090    # GET /status, GET /healthz
+password: change-me           # SOCKS5 password (any username); empty = no authentication
+profiles_dir: /profiles       # every *.ovpn below this directory is a candidate
+tunnels: 3                    # tunnels kept up at the same time
+sticky_ttl: 10m               # a client IP stays on the same tunnel this long; 0 = round robin
+health_url: http://www.gstatic.com/generate_204
+health_interval: 30s          # 3 failures in a row -> reconnect with another profile
+cooldown: 15m                 # a failed profile is left alone this long
+fallback_dns: [1.1.1.1, 8.8.8.8]   # used when the server pushes no DNS
+table_base: 100               # tunnel N uses routing table and fwmark table_base+N
 openvpn_bin: openvpn
 data_dir: /var/lib/ovpnmux
