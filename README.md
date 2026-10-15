@@ -1,11 +1,10 @@
 # ovpnmux
 
-複数の OpenVPN トンネルを同時に張り、1 つの SOCKS5 プロキシとして出し分ける常駐サーバーです。
+`profiles/` に置いた `.ovpn` ごとに OpenVPN トンネルを 1 本ずつ張り、SOCKS5 の username でどのトンネルから出るかを選ぶサーバーです。
 Docker で動かす前提で、必要な権限は `NET_ADMIN` と `/dev/net/tun` だけです。
 
-- `profiles/` に置いた `.ovpn` からランダムに選んで、設定した本数のトンネルを常に張っておく
-- username にプロファイルのファイル名を書けばそのトンネルを使う。`any` なら自動選択で、同じクライアント IP は一定時間同じトンネルに固定される
-- 落ちたトンネルは別のプロファイルで自動的に張り直す
+- `profiles/tokyo-1.ovpn` → username `tokyo-1` で繋ぐとそのトンネルから出る
+- 落ちたトンネルは自動で張り直す
 - トンネルごとに routing table と fwmark を割り当て、プロキシは `SO_MARK` を付けて dial する。
   listen ポートはトンネル本数に関係なく 1 つ
 
@@ -17,13 +16,12 @@ cp config.example.yaml config.yaml   # password を変える
 cp /path/to/*.ovpn profiles/
 docker compose up -d
 curl -s localhost:9090/status
-curl -x socks5h://any:PASSWORD@SERVER:1080 https://ifconfig.me
-curl -x socks5h://tokyo-1:PASSWORD@SERVER:1080 https://ifconfig.me   # profiles/tokyo-1.ovpn のトンネルを指定
+curl -x socks5h://tokyo-1:PASSWORD@SERVER:1080 https://ifconfig.me   # profiles/tokyo-1.ovpn から出る
 ```
 
 ## プロファイル
 
-`profiles/` 以下の `*.ovpn` がすべて候補になります (サブディレクトリも可)。ファイル名 (拡張子なし) がそのまま SOCKS5 の username になります。張られていないプロファイルを指定すると接続は失敗します。どれが張られているかは `/status` で見えます。
+`profiles/` 以下の `*.ovpn` 1 つにつきトンネルが 1 本張られます (サブディレクトリも可)。ファイル名 (拡張子なし) がそのまま SOCKS5 の username です。ファイルを足したり消したりしたら `docker compose restart` してください。
 
 - 証明書や鍵、`auth-user-pass` はインラインで書いてください。別ファイル参照は読めません
 - `up` / `down` / `plugin` / `script-security` / `management` などプログラムを実行する指示を含むプロファイルは読み込まれません
@@ -31,11 +29,11 @@ curl -x socks5h://tokyo-1:PASSWORD@SERVER:1080 https://ifconfig.me   # profiles/
 
 ## 設定 (`config.yaml`)
 
-`config.example.yaml` のコメントを見てください。主なものは `tunnels` (同時本数)、`sticky_ttl` (固定時間、0 で round robin)、`cooldown` (失敗したプロファイルを再利用しない時間) です。
+`config.example.yaml` のコメントを見てください。
 
 ## 管理 API (`127.0.0.1:9090`)
 
-- `GET /status` トンネル一覧 (状態、プロファイル、レイテンシ、接続数、バイト数、最後のエラー)
+- `GET /status` トンネル一覧 (プロファイル、状態、レイテンシ、接続数、バイト数、最後のエラー)
 - `GET /healthz` ready なトンネルが 1 本以上あれば 200
 
 ## 仕組み
@@ -44,7 +42,7 @@ curl -x socks5h://tokyo-1:PASSWORD@SERVER:1080 https://ifconfig.me   # profiles/
 2. `--up` で呼ばれた `ovpnmux _up` が tun のアドレス・gateway・DNS を JSON で渡す
 3. デーモンが `ip addr` / `ip route ... table N` / `ip rule add fwmark N lookup N` を設定する。table には `unreachable` のフォールバックがあり、トンネルが落ちても main に漏れない
 4. プロキシは選んだトンネルの fwmark を `SO_MARK` に付けて dial する。DNS も同じ経路で引く
-5. 定期的にヘルスチェックし、失敗が続くか openvpn が終了したら別のプロファイルで張り直す
+5. 定期的にヘルスチェックし、失敗が続くか openvpn が終了したら張り直す
 
 ## 開発
 

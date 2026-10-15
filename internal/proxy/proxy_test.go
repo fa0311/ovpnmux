@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -15,14 +16,18 @@ import (
 	"ovpnmux/internal/tunnel"
 )
 
-type fakePool []*tunnel.Tunnel
-
-func (p fakePool) Ready() []*tunnel.Tunnel { return p }
-
-func start(t *testing.T, password string) (addr string, pool fakePool) {
+func start(t *testing.T, password string) (addr string, beta *tunnel.Tunnel) {
 	t.Helper()
-	pool = fakePool{tunnel.NewReady(1, "alpha", &routing.Dialer{}), tunnel.NewReady(2, "beta", &routing.Dialer{})}
-	srv := &Server{Selector: NewSelector(pool, 0), Password: password}
+	alpha, beta := tunnel.NewReady("alpha", &routing.Dialer{}), tunnel.NewReady("beta", &routing.Dialer{})
+	srv := &Server{Password: password, Lookup: func(name string) (*tunnel.Tunnel, error) {
+		switch name {
+		case "alpha":
+			return alpha, nil
+		case "beta":
+			return beta, nil
+		}
+		return nil, fmt.Errorf("no profile %q", name)
+	}}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +40,7 @@ func start(t *testing.T, password string) (addr string, pool fakePool) {
 	for i := 0; i < 50; i++ {
 		if c, err := net.Dial("tcp", addr); err == nil {
 			c.Close()
-			return addr, pool
+			return addr, beta
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -60,45 +65,29 @@ func get(t *testing.T, socksAddr string, auth *proxy.Auth, u string) (string, er
 }
 
 func TestSocks5(t *testing.T) {
-	addr, pool := start(t, "secret")
+	addr, beta := start(t, "secret")
 	be := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "hello") }))
 	defer be.Close()
 
 	if got, err := get(t, addr, &proxy.Auth{User: "beta", Password: "secret"}, be.URL); err != nil || got != "hello" {
 		t.Fatalf("got %q, %v", got, err)
 	}
-	if pool[0].Conns.Load() != 0 && pool[0].Bytes.Load() != 0 {
-		t.Error("tunnel 1 should not have been used")
+	time.Sleep(50 * time.Millisecond)
+	if beta.Bytes.Load() == 0 {
+		t.Error("bytes should be counted on beta")
 	}
-	if _, err := get(t, addr, &proxy.Auth{User: "any", Password: "wrong"}, be.URL); err == nil {
+	if _, err := get(t, addr, &proxy.Auth{User: "beta", Password: "wrong"}, be.URL); err == nil {
 		t.Error("wrong password should fail")
 	}
 	if _, err := get(t, addr, &proxy.Auth{User: "gamma", Password: "secret"}, be.URL); err == nil {
 		t.Error("unknown profile should fail")
 	}
 	if _, err := get(t, addr, nil, be.URL); err == nil {
-		t.Error("missing auth should fail")
+		t.Error("missing username should fail")
 	}
 
 	open, _ := start(t, "")
-	if got, err := get(t, open, nil, be.URL); err != nil || got != "hello" {
-		t.Fatalf("no-auth: got %q, %v", got, err)
-	}
-}
-
-func TestSelectorSticky(t *testing.T) {
-	pool := fakePool{tunnel.NewReady(1, "alpha", nil), tunnel.NewReady(2, "beta", nil)}
-	s := NewSelector(pool, time.Minute)
-	first, _ := s.Select("", "10.0.0.1")
-	for i := 0; i < 5; i++ {
-		if t2, _ := s.Select("any", "10.0.0.1"); t2 != first {
-			t.Fatal("sticky selection changed")
-		}
-	}
-	if t3, _ := s.Select("Beta", "10.0.0.1"); t3.ID != 2 {
-		t.Error("profile name should select tunnel 2")
-	}
-	if _, err := s.Select("gamma", ""); err == nil {
-		t.Error("unknown profile should error")
+	if got, err := get(t, open, &proxy.Auth{User: "alpha", Password: "whatever"}, be.URL); err != nil || got != "hello" {
+		t.Fatalf("no-password: got %q, %v", got, err)
 	}
 }

@@ -17,10 +17,10 @@ func ListenAndServe(ctx context.Context, addr string, m *tunnel.Manager) error {
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		enc.Encode(map[string]any{"ready": len(m.Ready()), "tunnels": m.Status()})
+		enc.Encode(map[string]any{"ready": m.ReadyCount(), "tunnels": m.Status()})
 	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		if len(m.Ready()) == 0 {
+		if m.ReadyCount() == 0 {
 			http.Error(w, "no ready tunnel", http.StatusServiceUnavailable)
 			return
 		}

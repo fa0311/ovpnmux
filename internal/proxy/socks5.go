@@ -10,8 +10,8 @@ import (
 	"strconv"
 )
 
-// socks5 implements RFC 1928 CONNECT with optional RFC 1929 username/password.
-// The username selects the tunnel: empty or "any" for any, or a profile name.
+// socks5 implements RFC 1928 CONNECT with RFC 1929 username/password.
+// The username is the profile name (file name without .ovpn) of the tunnel to use.
 func (ss *session) socks5(ctx context.Context) {
 	br, c := ss.br, ss.conn
 	hdr := make([]byte, 2)
@@ -22,43 +22,33 @@ func (ss *session) socks5(ctx context.Context) {
 	if _, err := io.ReadFull(br, methods); err != nil {
 		return
 	}
-	var method byte
-	switch {
-	case bytes.IndexByte(methods, 0x02) >= 0:
-		method = 0x02
-	case bytes.IndexByte(methods, 0x00) >= 0 && ss.srv.Password == "":
-		method = 0x00
-	default:
+	if bytes.IndexByte(methods, 0x02) < 0 { // username/password is how the tunnel is chosen
 		c.Write([]byte{5, 0xFF})
 		return
 	}
-	c.Write([]byte{5, method})
-
-	key := ""
-	if method == 0x02 {
-		v := make([]byte, 2) // version, username length
-		if _, err := io.ReadFull(br, v); err != nil {
-			return
-		}
-		u := make([]byte, int(v[1]))
-		if _, err := io.ReadFull(br, u); err != nil {
-			return
-		}
-		pl := make([]byte, 1)
-		if _, err := io.ReadFull(br, pl); err != nil {
-			return
-		}
-		p := make([]byte, int(pl[0]))
-		if _, err := io.ReadFull(br, p); err != nil {
-			return
-		}
-		if ss.srv.Password != "" && string(p) != ss.srv.Password {
-			c.Write([]byte{1, 1})
-			return
-		}
-		c.Write([]byte{1, 0})
-		key = string(u)
+	c.Write([]byte{5, 0x02})
+	v := make([]byte, 2) // version, username length
+	if _, err := io.ReadFull(br, v); err != nil {
+		return
 	}
+	u := make([]byte, int(v[1]))
+	if _, err := io.ReadFull(br, u); err != nil {
+		return
+	}
+	pl := make([]byte, 1)
+	if _, err := io.ReadFull(br, pl); err != nil {
+		return
+	}
+	p := make([]byte, int(pl[0]))
+	if _, err := io.ReadFull(br, p); err != nil {
+		return
+	}
+	if ss.srv.Password != "" && string(p) != ss.srv.Password {
+		c.Write([]byte{1, 1})
+		return
+	}
+	c.Write([]byte{1, 0})
+	name := string(u)
 
 	req := make([]byte, 4) // version, command, reserved, address type
 	if _, err := io.ReadFull(br, req); err != nil || req[0] != 5 {
@@ -101,7 +91,7 @@ func (ss *session) socks5(ctx context.Context) {
 		return
 	}
 	hostport := net.JoinHostPort(host, strconv.Itoa(int(binary.BigEndian.Uint16(pb))))
-	target, t, err := ss.open(ctx, key, hostport)
+	target, t, err := ss.open(ctx, name, hostport)
 	if err != nil {
 		slog.Debug("connect failed", "client", ss.clientIP, "target", hostport, "err", err)
 		reply(c, 4)

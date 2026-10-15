@@ -1,5 +1,4 @@
-// Package proxy serves SOCKS5 and sends each connection out through a tunnel
-// chosen by the Selector.
+// Package proxy serves SOCKS5; the username names the tunnel to use.
 package proxy
 
 import (
@@ -15,8 +14,8 @@ import (
 )
 
 type Server struct {
-	Selector *Selector
-	Password string // empty disables authentication
+	Lookup   func(name string) (*tunnel.Tunnel, error)
+	Password string // empty accepts any password
 }
 
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
@@ -58,9 +57,9 @@ func (s *Server) handle(ctx context.Context, c net.Conn) {
 	ss.socks5(ctx)
 }
 
-// open picks a tunnel for the key and dials the target through it.
-func (ss *session) open(ctx context.Context, key, hostport string) (net.Conn, *tunnel.Tunnel, error) {
-	t, err := ss.srv.Selector.Select(key, ss.clientIP)
+// open dials the target through the named tunnel.
+func (ss *session) open(ctx context.Context, name, hostport string) (net.Conn, *tunnel.Tunnel, error) {
+	t, err := ss.srv.Lookup(name)
 	if err != nil {
 		return nil, nil, err
 	}

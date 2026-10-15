@@ -1,12 +1,10 @@
-listen: 0.0.0.0:1080          # SOCKS5
+listen: 0.0.0.0:1080          # SOCKS5. username = profile file name (without .ovpn)
 admin_listen: 0.0.0.0:9090    # GET /status, GET /healthz
-password: change-me           # SOCKS5 password; username = profile file name or "any". Empty = no authentication
-profiles_dir: /profiles       # every *.ovpn below this directory is a candidate
-tunnels: 3                    # tunnels kept up at the same time
-sticky_ttl: 10m               # a client IP stays on the same tunnel this long; 0 = round robin
+password: change-me           # SOCKS5 password; empty accepts any password
+profiles_dir: /profiles       # one tunnel per *.ovpn below this directory
 health_url: http://www.gstatic.com/generate_204
-health_interval: 30s          # 3 failures in a row -> reconnect with another profile
-cooldown: 15m                 # a failed profile is left alone this long
+health_interval: 30s          # 3 failures in a row -> reconnect
+retry_interval: 1m            # wait before reconnecting after a failure
 fallback_dns: [1.1.1.1, 8.8.8.8]   # used when the server pushes no DNS
 table_base: 100               # tunnel N uses routing table and fwmark table_base+N
 openvpn_bin: openvpn

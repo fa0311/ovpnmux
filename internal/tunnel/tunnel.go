@@ -1,8 +1,7 @@
-// Package tunnel runs openvpn processes and keeps a pool of healthy tunnels.
+// Package tunnel runs one openvpn process per profile and keeps it healthy.
 package tunnel
 
 import (
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,17 +19,17 @@ const (
 )
 
 type Tunnel struct {
-	ID    int
-	Dev   string
-	Mark  int
-	Table int
+	ID      int
+	Dev     string
+	Mark    int
+	Table   int
+	Profile profile.Profile
 
 	Conns atomic.Int64
 	Bytes atomic.Int64
 
 	mu      sync.Mutex
 	dialer  *routing.Dialer
-	profile profile.Profile
 	state   State
 	since   time.Time
 	latency time.Duration
@@ -38,10 +37,9 @@ type Tunnel struct {
 }
 
 type Status struct {
-	ID        int    `json:"id"`
+	Profile   string `json:"profile"`
 	Dev       string `json:"dev"`
 	State     State  `json:"state"`
-	Profile   string `json:"profile"`
 	Remote    string `json:"remote"`
 	Since     string `json:"since"`
 	Uptime    string `json:"uptime"`
@@ -52,9 +50,9 @@ type Status struct {
 }
 
 // NewReady returns a tunnel that is already ready and dials with d. Used by tests.
-func NewReady(id int, name string, d *routing.Dialer) *Tunnel {
-	return &Tunnel{ID: id, Dev: "test", dialer: d, state: StateReady, since: time.Now(),
-		profile: profile.Profile{ID: name, Name: name}}
+func NewReady(name string, d *routing.Dialer) *Tunnel {
+	return &Tunnel{Dev: "test", dialer: d, state: StateReady, since: time.Now(),
+		Profile: profile.Profile{ID: name, Name: name}}
 }
 
 func (t *Tunnel) set(f func()) {
@@ -63,29 +61,20 @@ func (t *Tunnel) set(f func()) {
 	f()
 }
 
+// Dialer returns the tunnel's dialer, or nil while it is not ready.
 func (t *Tunnel) Dialer() *routing.Dialer {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.state != StateReady {
+		return nil
+	}
 	return t.dialer
-}
-
-// Matches reports whether key names this tunnel's profile (file name or relative path).
-func (t *Tunnel) Matches(key string) bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return strings.EqualFold(key, t.profile.Name) || strings.EqualFold(key, t.profile.ID)
-}
-
-func (t *Tunnel) Ready() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.state == StateReady
 }
 
 func (t *Tunnel) Status() Status {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	s := Status{ID: t.ID, Dev: t.Dev, State: t.state, Profile: t.profile.ID, Remote: t.profile.Remote,
+	s := Status{Profile: t.Profile.ID, Dev: t.Dev, State: t.state, Remote: t.Profile.Remote,
 		Conns: t.Conns.Load(), Bytes: t.Bytes.Load(), LastError: t.lastErr}
 	if !t.since.IsZero() {
 		s.Since = t.since.Format(time.RFC3339)

@@ -52,8 +52,12 @@ func serve(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	m := tunnel.New(cfg)
-	srv := &proxy.Server{Selector: proxy.NewSelector(m, cfg.StickyTTL), Password: cfg.Password}
+	m, err := tunnel.New(cfg)
+	if err != nil {
+		slog.Error("profiles", "err", err)
+		return 1
+	}
+	srv := &proxy.Server{Lookup: m.Lookup, Password: cfg.Password}
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return m.Run(ctx) })
 	g.Go(func() error { return srv.ListenAndServe(ctx, cfg.Listen) })

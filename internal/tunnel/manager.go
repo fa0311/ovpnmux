@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand/v2"
 	"net/http"
 	"os"
 	"os/exec"
@@ -25,22 +24,27 @@ import (
 type Manager struct {
 	cfg     *config.Config
 	tunnels []*Tunnel
-
-	mu       sync.Mutex
-	inUse    map[string]bool
-	cooldown map[string]time.Time
 }
 
-func New(cfg *config.Config) *Manager {
-	m := &Manager{cfg: cfg, inUse: map[string]bool{}, cooldown: map[string]time.Time{}}
-	for id := 1; id <= cfg.Tunnels; id++ {
-		m.tunnels = append(m.tunnels, &Tunnel{ID: id, Dev: fmt.Sprintf("tun%d", id),
-			Mark: cfg.TableBase + id, Table: cfg.TableBase + id, state: StateDead})
+// New creates one tunnel per *.ovpn file under cfg.ProfilesDir.
+func New(cfg *config.Config) (*Manager, error) {
+	profiles, err := profile.Load(cfg.ProfilesDir)
+	if err != nil {
+		return nil, err
 	}
-	return m
+	if len(profiles) == 0 {
+		return nil, fmt.Errorf("no usable *.ovpn files in %s", cfg.ProfilesDir)
+	}
+	m := &Manager{cfg: cfg}
+	for i, p := range profiles {
+		id := i + 1
+		m.tunnels = append(m.tunnels, &Tunnel{ID: id, Dev: fmt.Sprintf("tun%d", id),
+			Mark: cfg.TableBase + id, Table: cfg.TableBase + id, Profile: p, state: StateDead})
+	}
+	return m, nil
 }
 
-// Run keeps every tunnel slot busy until ctx is cancelled.
+// Run keeps every tunnel up until ctx is cancelled.
 func (m *Manager) Run(ctx context.Context) error {
 	if err := os.MkdirAll(m.cfg.DataDir, 0o755); err != nil {
 		return err
@@ -50,21 +54,42 @@ func (m *Manager) Run(ctx context.Context) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			m.slotLoop(ctx, t)
+			for ctx.Err() == nil {
+				start := time.Now()
+				err := m.run(ctx, t)
+				if ctx.Err() != nil {
+					return
+				}
+				slog.Warn("tunnel ended", "profile", t.Profile.ID, "after", time.Since(start).Round(time.Second), "err", err)
+				sleep(ctx, m.cfg.RetryInterval)
+			}
 		}()
 	}
 	wg.Wait()
 	return nil
 }
 
-func (m *Manager) Ready() []*Tunnel {
-	var out []*Tunnel
+// Lookup returns the ready tunnel whose profile file name (or relative path) is name.
+func (m *Manager) Lookup(name string) (*Tunnel, error) {
 	for _, t := range m.tunnels {
-		if t.Ready() {
-			out = append(out, t)
+		if strings.EqualFold(name, t.Profile.Name) || strings.EqualFold(name, t.Profile.ID) {
+			if t.Dialer() == nil {
+				return nil, fmt.Errorf("tunnel %q is not ready", name)
+			}
+			return t, nil
 		}
 	}
-	return out
+	return nil, fmt.Errorf("no profile %q", name)
+}
+
+func (m *Manager) ReadyCount() int {
+	n := 0
+	for _, t := range m.tunnels {
+		if t.Dialer() != nil {
+			n++
+		}
+	}
+	return n
 }
 
 func (m *Manager) Status() []Status {
@@ -75,59 +100,12 @@ func (m *Manager) Status() []Status {
 	return out
 }
 
-func (m *Manager) slotLoop(ctx context.Context, t *Tunnel) {
-	for ctx.Err() == nil {
-		p, ok := m.pick()
-		if !ok {
-			slog.Info("no candidate profile, waiting", "tunnel", t.ID)
-			sleep(ctx, 30*time.Second)
-			continue
-		}
-		start := time.Now()
-		err := m.run(ctx, t, p)
-		m.mu.Lock()
-		delete(m.inUse, p.ID)
-		m.cooldown[p.ID] = time.Now().Add(m.cfg.Cooldown)
-		m.mu.Unlock()
-		if ctx.Err() != nil {
-			return
-		}
-		slog.Warn("tunnel ended", "tunnel", t.ID, "profile", p.ID, "after", time.Since(start).Round(time.Second), "err", err)
-		sleep(ctx, 2*time.Second)
-	}
-}
-
-// pick returns a random profile that is neither in use nor cooling down.
-func (m *Manager) pick() (profile.Profile, bool) {
-	profiles, err := profile.Load(m.cfg.ProfilesDir)
-	if err != nil {
-		slog.Error("load profiles", "dir", m.cfg.ProfilesDir, "err", err)
-		return profile.Profile{}, false
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	now := time.Now()
-	var cands []profile.Profile
-	for _, p := range profiles {
-		if !m.inUse[p.ID] && !m.cooldown[p.ID].After(now) {
-			cands = append(cands, p)
-		}
-	}
-	if len(cands) == 0 {
-		return profile.Profile{}, false
-	}
-	p := cands[rand.IntN(len(cands))]
-	m.inUse[p.ID] = true
-	return p, true
-}
-
 // run drives one openvpn process from start to exit and returns why it ended.
-func (m *Manager) run(ctx context.Context, t *Tunnel, p profile.Profile) error {
+func (m *Manager) run(ctx context.Context, t *Tunnel) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	t.set(func() {
-		t.profile, t.state, t.since, t.latency, t.lastErr, t.dialer = p, StateConnecting, time.Now(), 0, "", nil
-	})
+	p := t.Profile
+	t.set(func() { t.state, t.since, t.latency, t.lastErr, t.dialer = StateConnecting, time.Now(), 0, "", nil })
 	defer t.set(func() { t.state = StateDead })
 	defer routing.Teardown(t.Table, t.Mark)
 
@@ -177,7 +155,7 @@ func (m *Manager) run(ctx context.Context, t *Tunnel, p profile.Profile) error {
 		return fmt.Errorf("first health check: %w", err)
 	}
 	t.set(func() { t.dialer, t.state, t.latency = d, StateReady, latency })
-	slog.Info("tunnel ready", "tunnel", t.ID, "profile", p.ID, "latency", latency.Round(time.Millisecond))
+	slog.Info("tunnel ready", "profile", p.ID, "dev", t.Dev, "latency", latency.Round(time.Millisecond))
 
 	ticker := time.NewTicker(m.cfg.HealthInterval)
 	defer ticker.Stop()
@@ -192,7 +170,7 @@ func (m *Manager) run(ctx context.Context, t *Tunnel, p profile.Profile) error {
 			lat, err := m.health(ctx, d)
 			if err != nil {
 				fails++
-				slog.Warn("health check failed", "tunnel", t.ID, "fails", fails, "err", err)
+				slog.Warn("health check failed", "profile", p.ID, "fails", fails, "err", err)
 				if fails >= 3 {
 					return fmt.Errorf("health check failed %d times: %w", fails, err)
 				}
@@ -240,7 +218,7 @@ func logOutput(t *Tunnel, r io.Reader) {
 			}
 			s := line.String()
 			line.Reset()
-			slog.Debug("openvpn", "tunnel", t.ID, "msg", s)
+			slog.Debug("openvpn", "profile", t.Profile.ID, "msg", s)
 			if strings.Contains(s, "ERROR") || strings.Contains(s, "AUTH_FAILED") || strings.Contains(s, "TLS Error") || strings.Contains(s, "fatal error") {
 				t.set(func() { t.lastErr = s })
 			}
