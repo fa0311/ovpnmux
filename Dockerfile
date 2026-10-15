@@ -12,5 +12,6 @@ FROM alpine:3.22
 RUN apk add --no-cache openvpn iproute2 ca-certificates
 COPY --from=build /usr/local/bin/ovpnmux /usr/local/bin/ovpnmux
 COPY config.example.yaml /etc/ovpnmux/config.yaml
+HEALTHCHECK --interval=30s --timeout=5s --start-period=2m CMD wget -qO- http://127.0.0.1:9090/healthz || exit 1
 ENTRYPOINT ["ovpnmux"]
 CMD ["serve", "-config", "/etc/ovpnmux/config.yaml"]
