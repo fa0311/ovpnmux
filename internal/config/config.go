@@ -12,7 +12,7 @@ import (
 type Config struct {
 	Listen         string        `yaml:"listen"`
 	AdminListen    string        `yaml:"admin_listen"`
-	Password       string        `yaml:"password"` // SOCKS5 password; empty accepts any password
+	Password       string        `yaml:"password"` // Basic auth password; empty accepts any password
 	ProfilesDir    string        `yaml:"profiles_dir"`
 	HealthURL      string        `yaml:"health_url"`
 	HealthInterval time.Duration `yaml:"health_interval"`

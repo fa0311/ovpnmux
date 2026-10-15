@@ -1,6 +1,6 @@
-listen: 0.0.0.0:1080          # SOCKS5. username = profile file name (without .ovpn)
+listen: 0.0.0.0:1080          # HTTP CONNECT proxy. Basic auth username = profile file name (without .ovpn)
 admin_listen: 0.0.0.0:9090    # GET /status, GET /healthz
-password: change-me           # SOCKS5 password; empty accepts any password
+password: change-me           # Basic auth password; empty accepts any password
 profiles_dir: /profiles       # one tunnel per *.ovpn below this directory
 health_url: http://www.gstatic.com/generate_204
 health_interval: 30s          # 3 failures in a row -> reconnect

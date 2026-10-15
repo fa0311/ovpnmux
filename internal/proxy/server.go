@@ -1,13 +1,16 @@
-// Package proxy serves SOCKS5; the username names the tunnel to use.
+// Package proxy serves an HTTP CONNECT proxy; the Basic auth username names the tunnel to use.
 package proxy
 
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
+	"strings"
 	"time"
 
 	"ovpnmux/internal/tunnel"
@@ -27,7 +30,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 		<-ctx.Done()
 		ln.Close()
 	}()
-	slog.Info("socks5 listening", "addr", addr)
+	slog.Info("proxy listening", "addr", addr)
 	for {
 		c, err := ln.Accept()
 		if err != nil {
@@ -42,54 +45,80 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	}
 }
 
-type session struct {
-	srv      *Server
-	conn     net.Conn
-	br       *bufio.Reader
-	clientIP string
-}
-
+// handle serves one CONNECT request and then tunnels bytes until either side closes.
 func (s *Server) handle(ctx context.Context, c net.Conn) {
 	defer c.Close()
-	_ = c.SetDeadline(time.Now().Add(30 * time.Second)) // handshake only; cleared before splicing
-	host, _, _ := net.SplitHostPort(c.RemoteAddr().String())
-	ss := &session{srv: s, conn: c, br: bufio.NewReader(c), clientIP: host}
-	ss.socks5(ctx)
-}
-
-// open dials the target through the named tunnel.
-func (ss *session) open(ctx context.Context, name, hostport string) (net.Conn, *tunnel.Tunnel, error) {
-	t, err := ss.srv.Lookup(name)
+	_ = c.SetDeadline(time.Now().Add(30 * time.Second)) // request only; cleared before tunnelling
+	br := bufio.NewReader(c)
+	req, err := http.ReadRequest(br)
 	if err != nil {
-		return nil, nil, err
+		return
+	}
+	if req.Method != http.MethodConnect {
+		respond(c, http.StatusMethodNotAllowed, "Allow: CONNECT\r\n")
+		return
+	}
+	name, password := basicAuth(req.Header.Get("Proxy-Authorization"))
+	if name == "" || (s.Password != "" && password != s.Password) {
+		respond(c, http.StatusProxyAuthRequired, "Proxy-Authenticate: Basic realm=\"ovpnmux\"\r\n")
+		return
+	}
+	t, err := s.Lookup(name)
+	if err != nil {
+		slog.Debug("connect refused", "client", c.RemoteAddr(), "err", err)
+		respond(c, http.StatusBadGateway, "")
+		return
+	}
+	hostport := req.Host
+	if _, _, err := net.SplitHostPort(hostport); err != nil {
+		hostport = net.JoinHostPort(hostport, "443")
 	}
 	dctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	c, err := t.Dialer().DialContext(dctx, "tcp", hostport)
+	target, err := t.Dialer().DialContext(dctx, "tcp", hostport)
+	cancel()
 	if err != nil {
-		return nil, nil, fmt.Errorf("dial %s via tunnel %d: %w", hostport, t.ID, err)
+		slog.Debug("connect failed", "client", c.RemoteAddr(), "target", hostport, "profile", name, "err", err)
+		respond(c, http.StatusBadGateway, "")
+		return
 	}
-	return c, t, nil
-}
+	defer target.Close()
+	if _, err := io.WriteString(c, "HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
+		return
+	}
+	_ = c.SetDeadline(time.Time{})
 
-// splice copies both directions until either side finishes, then closes both.
-func (ss *session) splice(target net.Conn, t *tunnel.Tunnel) {
-	_ = ss.conn.SetDeadline(time.Time{})
 	t.Conns.Add(1)
 	defer t.Conns.Add(-1)
 	done := make(chan struct{}, 2)
 	go func() {
-		n, _ := io.Copy(target, ss.br)
+		n, _ := io.Copy(target, br)
 		t.Bytes.Add(n)
 		done <- struct{}{}
 	}()
 	go func() {
-		n, _ := io.Copy(ss.conn, target)
+		n, _ := io.Copy(c, target)
 		t.Bytes.Add(n)
 		done <- struct{}{}
 	}()
 	<-done
 	target.Close()
-	ss.conn.Close()
+	c.Close()
 	<-done
+}
+
+func respond(w io.Writer, code int, extraHeaders string) {
+	fmt.Fprintf(w, "HTTP/1.1 %d %s\r\n%sContent-Length: 0\r\nConnection: close\r\n\r\n", code, http.StatusText(code), extraHeaders)
+}
+
+func basicAuth(h string) (user, pass string) {
+	scheme, cred, ok := strings.Cut(h, " ")
+	if !ok || !strings.EqualFold(scheme, "Basic") {
+		return "", ""
+	}
+	b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(cred))
+	if err != nil {
+		return "", ""
+	}
+	user, pass, _ = strings.Cut(string(b), ":")
+	return user, pass
 }

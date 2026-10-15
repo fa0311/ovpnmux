@@ -1,4 +1,4 @@
-// ovpnmux keeps several OpenVPN tunnels up and exposes them as one SOCKS5 proxy.
+// ovpnmux keeps several OpenVPN tunnels up and exposes them as one HTTP CONNECT proxy.
 package main
 
 import (

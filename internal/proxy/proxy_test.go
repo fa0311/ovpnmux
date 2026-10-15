@@ -2,15 +2,15 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
-
-	"golang.org/x/net/proxy"
 
 	"ovpnmux/internal/routing"
 	"ovpnmux/internal/tunnel"
@@ -48,13 +48,18 @@ func start(t *testing.T, password string) (addr string, beta *tunnel.Tunnel) {
 	return
 }
 
-func get(t *testing.T, socksAddr string, auth *proxy.Auth, u string) (string, error) {
+// get fetches u (https, so the client uses CONNECT) through the proxy with Basic auth user:pass.
+func get(t *testing.T, proxyAddr, user, pass, u string) (string, error) {
 	t.Helper()
-	d, err := proxy.SOCKS5("tcp", socksAddr, auth, proxy.Direct)
-	if err != nil {
-		t.Fatal(err)
+	pu := &url.URL{Scheme: "http", Host: proxyAddr}
+	if user != "" {
+		pu.User = url.UserPassword(user, pass)
 	}
-	client := &http.Client{Transport: &http.Transport{Dial: d.Dial, DisableKeepAlives: true}}
+	client := &http.Client{Transport: &http.Transport{
+		Proxy:             http.ProxyURL(pu),
+		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true},
+		DisableKeepAlives: true,
+	}}
 	resp, err := client.Get(u)
 	if err != nil {
 		return "", err
@@ -64,30 +69,43 @@ func get(t *testing.T, socksAddr string, auth *proxy.Auth, u string) (string, er
 	return string(b), nil
 }
 
-func TestSocks5(t *testing.T) {
+func TestConnect(t *testing.T) {
 	addr, beta := start(t, "secret")
-	be := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "hello") }))
+	be := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "hello") }))
 	defer be.Close()
 
-	if got, err := get(t, addr, &proxy.Auth{User: "beta", Password: "secret"}, be.URL); err != nil || got != "hello" {
+	if got, err := get(t, addr, "beta", "secret", be.URL); err != nil || got != "hello" {
 		t.Fatalf("got %q, %v", got, err)
 	}
 	time.Sleep(50 * time.Millisecond)
 	if beta.Bytes.Load() == 0 {
 		t.Error("bytes should be counted on beta")
 	}
-	if _, err := get(t, addr, &proxy.Auth{User: "beta", Password: "wrong"}, be.URL); err == nil {
+	if _, err := get(t, addr, "beta", "wrong", be.URL); err == nil {
 		t.Error("wrong password should fail")
 	}
-	if _, err := get(t, addr, &proxy.Auth{User: "gamma", Password: "secret"}, be.URL); err == nil {
+	if _, err := get(t, addr, "gamma", "secret", be.URL); err == nil {
 		t.Error("unknown profile should fail")
 	}
-	if _, err := get(t, addr, nil, be.URL); err == nil {
-		t.Error("missing username should fail")
+	if _, err := get(t, addr, "", "", be.URL); err == nil {
+		t.Error("missing auth should fail")
+	}
+
+	// Anything but CONNECT is refused.
+	c, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	io.WriteString(c, "GET http://example.com/ HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	buf := make([]byte, 64)
+	n, _ := c.Read(buf)
+	if want := "HTTP/1.1 405 "; string(buf[:len(want)]) != want {
+		t.Errorf("plain request: got %q", buf[:n])
 	}
 
 	open, _ := start(t, "")
-	if got, err := get(t, open, &proxy.Auth{User: "alpha", Password: "whatever"}, be.URL); err != nil || got != "hello" {
+	if got, err := get(t, open, "alpha", "whatever", be.URL); err != nil || got != "hello" {
 		t.Fatalf("no-password: got %q, %v", got, err)
 	}
 }

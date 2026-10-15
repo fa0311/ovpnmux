@@ -1,6 +1,6 @@
 # ovpnmux
 
-`profiles/` に置いた `.ovpn` ごとに OpenVPN トンネルを 1 本ずつ張り、SOCKS5 の username でどのトンネルから出るかを選ぶサーバーです。
+`profiles/` に置いた `.ovpn` ごとに OpenVPN トンネルを 1 本ずつ張り、HTTP CONNECT プロキシの Basic 認証 username でどのトンネルから出るかを選ぶサーバーです。
 Docker で動かす前提で、必要な権限は `NET_ADMIN` と `/dev/net/tun` だけです。
 
 - `profiles/tokyo-1.ovpn` → username `tokyo-1` で繋ぐとそのトンネルから出る
@@ -16,16 +16,18 @@ cp config.example.yaml config.yaml   # password を変える
 cp /path/to/*.ovpn profiles/
 docker compose up -d
 curl -s localhost:9090/status
-curl -x socks5h://tokyo-1:PASSWORD@SERVER:1080 https://ifconfig.me   # profiles/tokyo-1.ovpn から出る
+curl -x http://tokyo-1:PASSWORD@SERVER:1080 https://ifconfig.me   # profiles/tokyo-1.ovpn から出る
 ```
 
 ## プロファイル
 
-`profiles/` 以下の `*.ovpn` 1 つにつきトンネルが 1 本張られます (サブディレクトリも可)。ファイル名 (拡張子なし) がそのまま SOCKS5 の username です。ファイルを足したり消したりしたら `docker compose restart` してください。
+`profiles/` 以下の `*.ovpn` 1 つにつきトンネルが 1 本張られます (サブディレクトリも可)。ファイル名 (拡張子なし) がそのまま Basic 認証の username です。ファイルを足したり消したりしたら `docker compose restart` してください。
 
 - 証明書や鍵、`auth-user-pass` はインラインで書いてください。別ファイル参照は読めません
 - `up` / `down` / `plugin` / `script-security` / `management` などプログラムを実行する指示を含むプロファイルは読み込まれません
 - `dev` / `redirect-gateway` / `route` などルーティングに関わる指示は無視され、ovpnmux が自分で設定します
+
+CONNECT だけに対応しています。ブラウザや curl は `https://` の URL では CONNECT を使いますが、`http://` の URL ではプロキシに `GET http://...` を送るので、そのままでは通りません (curl なら `-p` で CONNECT を強制できます)。
 
 ## 設定 (`config.yaml`)
 
