@@ -62,7 +62,7 @@ func Default() *Config {
 	c.Health.Interval = 30 * time.Second
 	c.Health.Cooldown = 15 * time.Minute
 	c.OpenVPNBin = "openvpn"
-	c.DataDir = "/var/lib/vpngate-proxy"
+	c.DataDir = "/var/lib/ovpnmux"
 	return c
 }
 

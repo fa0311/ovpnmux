@@ -1,4 +1,4 @@
-// vpngate-proxy keeps several OpenVPN tunnels up and exposes them as one SOCKS5/HTTP proxy.
+// ovpnmux keeps several OpenVPN tunnels up and exposes them as one SOCKS5/HTTP proxy.
 package main
 
 import (
@@ -15,12 +15,12 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"vpngate-proxy/internal/admin"
-	"vpngate-proxy/internal/config"
-	"vpngate-proxy/internal/profile"
-	"vpngate-proxy/internal/proxy"
-	"vpngate-proxy/internal/routing"
-	"vpngate-proxy/internal/tunnel"
+	"ovpnmux/internal/admin"
+	"ovpnmux/internal/config"
+	"ovpnmux/internal/profile"
+	"ovpnmux/internal/proxy"
+	"ovpnmux/internal/routing"
+	"ovpnmux/internal/tunnel"
 )
 
 func main() {
@@ -43,13 +43,13 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  vpngate-proxy serve [-config FILE] [-debug]   run the proxy
-  vpngate-proxy list  [-config FILE] [-dir DIR] show profiles the daemon would use`)
+  ovpnmux serve [-config FILE] [-debug]   run the proxy
+  ovpnmux list  [-config FILE] [-dir DIR] show profiles the daemon would use`)
 }
 
 func serve(args []string) int {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	cfgPath := fs.String("config", "/etc/vpngate-proxy/config.yaml", "config file")
+	cfgPath := fs.String("config", "/etc/ovpnmux/config.yaml", "config file")
 	debug := fs.Bool("debug", false, "log at debug level (includes openvpn output)")
 	fs.Parse(args)
 	level := slog.LevelInfo
@@ -88,7 +88,7 @@ func serve(args []string) int {
 
 func list(args []string) int {
 	fs := flag.NewFlagSet("list", flag.ExitOnError)
-	cfgPath := fs.String("config", "/etc/vpngate-proxy/config.yaml", "config file")
+	cfgPath := fs.String("config", "/etc/ovpnmux/config.yaml", "config file")
 	dir := fs.String("dir", "", "profiles directory (overrides config)")
 	fs.Parse(args)
 	if *dir == "" {
@@ -113,9 +113,9 @@ func list(args []string) int {
 
 // up is run by openvpn as its --up script. It reports the tunnel parameters to the daemon.
 func up() int {
-	path := os.Getenv("VGP_UP_FILE")
+	path := os.Getenv("OVPNMUX_UP_FILE")
 	if path == "" {
-		fmt.Fprintln(os.Stderr, "VGP_UP_FILE not set")
+		fmt.Fprintln(os.Stderr, "OVPNMUX_UP_FILE not set")
 		return 1
 	}
 	info := routing.UpInfo{

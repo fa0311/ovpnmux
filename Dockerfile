@@ -10,8 +10,8 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 
 FROM alpine:3.22
 RUN apk add --no-cache openvpn iproute2 ca-certificates
-COPY --from=build /out/vpngate-proxy /out/vpngate-feeder /usr/local/bin/
-COPY config.example.yaml /etc/vpngate-proxy/config.yaml
+COPY --from=build /out/ovpnmux /out/vpngate-feeder /usr/local/bin/
+COPY config.example.yaml /etc/ovpnmux/config.yaml
 COPY profiles/examples /profiles/examples
-ENTRYPOINT ["vpngate-proxy"]
-CMD ["serve", "-config", "/etc/vpngate-proxy/config.yaml"]
+ENTRYPOINT ["ovpnmux"]
+CMD ["serve", "-config", "/etc/ovpnmux/config.yaml"]

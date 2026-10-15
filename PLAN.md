@@ -1,4 +1,4 @@
-# vpngate-proxy 設計プラン
+# ovpnmux 設計プラン (旧名 vpngate-proxy)
 
 作成日: 2026-10-15 (同日中に 3 回改訂: 自宅 Docker 前提 / Go 採用 / VPN Gate 非依存コアに分離)
 
@@ -20,7 +20,7 @@
 
 | 層 | VPN Gate 依存 | 中身 |
 |---|---|---|
-| デーモン (`vpngate-proxy serve`) | **無し** | .ovpn を読む、openvpn を起動、ポリシールーティング、SOCKS5/HTTP、選択、ヘルスチェック、admin |
+| デーモン (`ovpnmux serve`) | **無し** | .ovpn を読む、openvpn を起動、ポリシールーティング、SOCKS5/HTTP、選択、ヘルスチェック、admin |
 | プロファイルの付加情報 | 無し | `.ovpn` 先頭のコメント (`# tags: country=JP name=public-vpn-251`) または同名 `.json`。無ければ接続後に出口 IP を GeoIP で引いて自動付与 |
 | feeder (`vpngate-feeder` 別バイナリ or `tools/` のスクリプト) | **有り** | API の CSV を取得 → フィルタ → `remote` を DDNS 名に書き換え → `profiles/vpngate/*.ovpn` に書く。古いものは消す |
 | 同梱テンプレート `profiles/examples/public-vpn-*.ovpn` | 弱 (DDNS 名のみ) | CA 証明書は全台共通なので 1 テンプレートを複製して `remote` だけ変える |
@@ -91,9 +91,9 @@ CSV フォーマットが変わっても壊れるのは feeder だけで、デ�
 ## アーキテクチャ
 
 ```
-docker compose: vpngate-proxy (cap_add NET_ADMIN, /dev/net/tun)  ← コンテナ自身の netns
+docker compose: ovpnmux (cap_add NET_ADMIN, /dev/net/tun)  ← コンテナ自身の netns
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ vpngate-proxy serve (Go, 1 プロセス)                                          │
+│ ovpnmux serve (Go, 1 プロセス)                                          │
 │  ├ profiles       : profiles/**/*.ovpn を読み、fsnotify で変更を追う            │
 │  ├ tunnel manager : openvpn 子プロセス x N を監視・張り替え                       │
 │  │                  tunN ごとに routing table N + `ip rule fwmark N → table N`  │
@@ -228,7 +228,7 @@ routing:
   table_base: 100              # tunN → table 100+N, fwmark 100+N
   fallback_dns: [1.1.1.1, 8.8.8.8]
 openvpn_bin: /usr/sbin/openvpn
-data_dir: /var/lib/vpngate-proxy
+data_dir: /var/lib/ovpnmux
 ```
 
 ## Docker デプロイ (自宅サーバー)
@@ -248,9 +248,9 @@ services:
       - "192.168.1.10:1080:1080"   # LAN の自宅サーバー IP に限定して公開
       - "127.0.0.1:9090:9090"      # admin はホストのローカルのみ
     volumes:
-      - ./config.yaml:/etc/vpngate-proxy/config.yaml:ro
+      - ./config.yaml:/etc/ovpnmux/config.yaml:ro
       - profiles:/profiles
-      - data:/var/lib/vpngate-proxy
+      - data:/var/lib/ovpnmux
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/healthz"]
@@ -272,7 +272,7 @@ volumes:
 ## リポジトリ構成 (予定)
 
 ```
-cmd/vpngate-proxy/             # serve / list / up / _up
+cmd/ovpnmux/             # serve / list / up / _up
 cmd/vpngate-feeder/            # VPN Gate CSV → profiles/*.ovpn (ここだけ VPN Gate 依存)
 internal/profile/              # .ovpn 読み込み、tags、fsnotify、危険ディレクティブ拒否
 internal/tunnel/               # openvpn プロセス、_up 通知、ヘルスチェック、プール、スコア
@@ -290,8 +290,8 @@ Dockerfile  docker-compose.yml  config.example.yaml  .golangci.yml  .github/work
 0. **自宅 Docker で PoC (bash)** — `docker run --cap-add NET_ADMIN --device /dev/net/tun --sysctl ... ubuntu` の中で
    openvpn 2 本を `--route-noexec` で張り、`ip rule` / table / `SO_MARK` (iptables の owner マッチか `curl --interface` で代用) で
    それぞれから `curl ifconfig.me` が別の出口 IP を返すことを確認。技術的な肝はここなので最初に潰す
-1. **profile + feeder + `vpngate-proxy list`** — .ovpn 読み込み、tags、危険ディレクティブ拒否、CSV → .ovpn。sandbox でテスト可能
-2. **tunnel manager + routing + `vpngate-proxy up --country JP`** — 1 本張って SO_MARK dialer で疎通確認まで (自宅 Docker)
+1. **profile + feeder + `ovpnmux list`** — .ovpn 読み込み、tags、危険ディレクティブ拒否、CSV → .ovpn。sandbox でテスト可能
+2. **tunnel manager + routing + `ovpnmux up --country JP`** — 1 本張って SO_MARK dialer で疎通確認まで (自宅 Docker)
 3. **proxy + admin** — mixed SOCKS5/HTTP、username 選択、sticky、`/status`
 4. **運用品質** — 自動張り替え、バックオフ、永続スコア、Dockerfile (multi-arch)、compose、healthcheck、CI
 5. **任意** — UDP ASSOCIATE、国別追加ポート、Web UI、ユーザー空間モード

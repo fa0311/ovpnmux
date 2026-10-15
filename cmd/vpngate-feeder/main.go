@@ -1,4 +1,4 @@
-// vpngate-feeder turns the VPN Gate server list into *.ovpn profiles for vpngate-proxy.
+// vpngate-feeder turns the VPN Gate server list into *.ovpn profiles for ovpnmux.
 // It is the only component that knows about VPN Gate.
 package main
 
@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	"vpngate-proxy/internal/vpngate"
+	"ovpnmux/internal/vpngate"
 )
 
 var remoteRe = regexp.MustCompile(`(?m)^remote\s+\S+\s+(\d+)`)

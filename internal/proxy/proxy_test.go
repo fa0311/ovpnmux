@@ -12,8 +12,8 @@ import (
 
 	"golang.org/x/net/proxy"
 
-	"vpngate-proxy/internal/routing"
-	"vpngate-proxy/internal/tunnel"
+	"ovpnmux/internal/routing"
+	"ovpnmux/internal/tunnel"
 )
 
 type fakePool []*tunnel.Tunnel

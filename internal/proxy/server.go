@@ -11,7 +11,7 @@ import (
 	"net"
 	"time"
 
-	"vpngate-proxy/internal/tunnel"
+	"ovpnmux/internal/tunnel"
 )
 
 type Server struct {

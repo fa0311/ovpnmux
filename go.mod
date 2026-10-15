@@ -1,4 +1,4 @@
-module vpngate-proxy
+module ovpnmux
 
 go 1.27
 

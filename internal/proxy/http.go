@@ -19,7 +19,7 @@ func (ss *session) http(ctx context.Context) {
 	}
 	user, pass := basicAuth(req.Header.Get("Proxy-Authorization"))
 	if !ss.srv.authOK(pass) {
-		ss.respond(http.StatusProxyAuthRequired, "Proxy-Authenticate: Basic realm=\"vpngate-proxy\"\r\n")
+		ss.respond(http.StatusProxyAuthRequired, "Proxy-Authenticate: Basic realm=\"ovpnmux\"\r\n")
 		return
 	}
 	if req.Method == http.MethodConnect {

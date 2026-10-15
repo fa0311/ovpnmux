@@ -1,10 +1,10 @@
-# vpngate-proxy configuration. ${VAR} is expanded from the environment.
+# ovpnmux configuration. ${VAR} is expanded from the environment.
 listen: 0.0.0.0:1080          # SOCKS5 + HTTP proxy (restrict with compose `ports:`)
 admin_listen: 0.0.0.0:9090    # GET /status, GET /healthz, POST /tunnels/{id}/reconnect
 
 auth:
   required: true
-  password: ${VGP_PASSWORD}   # SOCKS5 / Proxy-Authorization password; the username selects the exit
+  password: ${OVPNMUX_PASSWORD}   # SOCKS5 / Proxy-Authorization password; the username selects the exit
 
 profiles_dir: /profiles       # every *.ovpn below this directory is a candidate
 
@@ -31,4 +31,4 @@ health:
   cooldown: 15m               # how long a failed profile is left alone
 
 openvpn_bin: openvpn
-data_dir: /var/lib/vpngate-proxy
+data_dir: /var/lib/ovpnmux

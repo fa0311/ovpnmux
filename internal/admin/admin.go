@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"vpngate-proxy/internal/tunnel"
+	"ovpnmux/internal/tunnel"
 )
 
 func Handler(m *tunnel.Manager) http.Handler {

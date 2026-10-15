@@ -18,9 +18,9 @@ import (
 	"syscall"
 	"time"
 
-	"vpngate-proxy/internal/config"
-	"vpngate-proxy/internal/profile"
-	"vpngate-proxy/internal/routing"
+	"ovpnmux/internal/config"
+	"ovpnmux/internal/profile"
+	"ovpnmux/internal/routing"
 )
 
 type Manager struct {
@@ -267,17 +267,17 @@ func (m *Manager) run(ctx context.Context, t *Tunnel, p profile.Profile) error {
 func (m *Manager) directives(t *Tunnel, upFile string) string {
 	self, err := os.Executable()
 	if err != nil {
-		self = "vpngate-proxy"
+		self = "ovpnmux"
 	}
 	return fmt.Sprintf(`
-# --- added by vpngate-proxy ---
+# --- added by ovpnmux ---
 dev %s
 dev-type tun
 ifconfig-noexec
 route-noexec
 pull-filter ignore "redirect-gateway"
 script-security 2
-setenv VGP_UP_FILE %s
+setenv OVPNMUX_UP_FILE %s
 up "%s _up"
 connect-timeout 15
 connect-retry-max 1

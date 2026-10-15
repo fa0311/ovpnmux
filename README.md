@@ -1,9 +1,9 @@
-# vpngate-proxy
+# ovpnmux
 
 複数の OpenVPN トンネルを同時に張り、1 つの SOCKS5 / HTTP プロキシとして LAN に提供する常駐サーバーです。
 自宅サーバーの Docker で動かす前提で、必要な権限は `NET_ADMIN` と `/dev/net/tun` だけです。
 
-- 本体 (`vpngate-proxy`) は `profiles/**/*.ovpn` を読むだけで、VPN Gate のことは知りません。
+- 本体 (`ovpnmux`) は `profiles/**/*.ovpn` を読むだけで、VPN Gate のことは知りません。
   Mullvad や Proton の `.ovpn` を置いても同じように動きます
 - `vpngate-feeder` は VPN Gate の公開 API を 10 分ごとに読み、`.ovpn` に変換して profiles に置く別プロセスです。無くても動きます
 - `profiles/examples/` には筑波大 (登大遊氏) 運営の `public-vpn-NNN.opengw.net` 用プロファイルが入っています。DDNS 名なので静的に使えます
@@ -13,7 +13,7 @@
 ## 使い方 (docker compose)
 
 ```sh
-cp .env.example .env            # GHCR_OWNER, LAN_IP, VGP_PASSWORD を書く
+cp .env.example .env            # LAN_IP, OVPNMUX_PASSWORD を書く
 cp config.example.yaml config.yaml
 docker compose up -d
 curl -s localhost:9090/status   # トンネルの状態
@@ -63,7 +63,7 @@ remote vpn.example.com 1194
 ## 仕組み
 
 1. openvpn を `--ifconfig-noexec --route-noexec` で起動し、ホストのルーティングは触らせない
-2. `--up` で呼ばれた `vpngate-proxy _up` が tun のアドレス・gateway・DNS を JSON で渡す
+2. `--up` で呼ばれた `ovpnmux _up` が tun のアドレス・gateway・DNS を JSON で渡す
 3. デーモンが `ip addr` / `ip route ... table N` / `ip rule add fwmark N lookup N` を設定する。table には `unreachable` のフォールバックがあり、トンネルが落ちても main に漏れない
 4. プロキシは選んだトンネルの fwmark を `SO_MARK` に付けて dial する。DNS も同じ経路で引く
 5. 30 秒ごとにヘルスチェックし、3 回連続で失敗するか openvpn が終了したら別のプロファイルで張り直す
@@ -74,11 +74,11 @@ remote vpn.example.com 1194
 go test ./...
 go build -o bin/ ./cmd/...
 ./bin/vpngate-feeder -out /tmp/profiles -interval 0 -countries JP   # VPN Gate から .ovpn を作る
-./bin/vpngate-proxy list -dir /tmp/profiles
+./bin/ovpnmux list -dir /tmp/profiles
 ```
 
 実トンネルの動作確認には `NET_ADMIN` と `/dev/net/tun` が要るので、Docker ホストで `docker compose up` して確認します。
-`main` ブランチへの push で GitHub Actions がテストを実行し、`ghcr.io/<owner>/vpngate-proxy:main` (amd64 / arm64) を公開します。
+`main` ブランチへの push で GitHub Actions がテストを実行し、`ghcr.io/fa0311/ovpnmux:main` (amd64 / arm64) を公開します。
 
 ## 注意
 

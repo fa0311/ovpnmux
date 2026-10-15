@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"vpngate-proxy/internal/tunnel"
+	"ovpnmux/internal/tunnel"
 )
 
 type Pool interface {

@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"vpngate-proxy/internal/profile"
-	"vpngate-proxy/internal/routing"
+	"ovpnmux/internal/profile"
+	"ovpnmux/internal/routing"
 )
 
 type State string
