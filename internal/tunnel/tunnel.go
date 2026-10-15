@@ -2,6 +2,7 @@
 package tunnel
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -51,8 +52,9 @@ type Status struct {
 }
 
 // NewReady returns a tunnel that is already ready and dials with d. Used by tests.
-func NewReady(id int, d *routing.Dialer) *Tunnel {
-	return &Tunnel{ID: id, Dev: "test", dialer: d, state: StateReady, since: time.Now()}
+func NewReady(id int, name string, d *routing.Dialer) *Tunnel {
+	return &Tunnel{ID: id, Dev: "test", dialer: d, state: StateReady, since: time.Now(),
+		profile: profile.Profile{ID: name, Name: name}}
 }
 
 func (t *Tunnel) set(f func()) {
@@ -65,6 +67,13 @@ func (t *Tunnel) Dialer() *routing.Dialer {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.dialer
+}
+
+// Matches reports whether key names this tunnel's profile (file name or relative path).
+func (t *Tunnel) Matches(key string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.EqualFold(key, t.profile.Name) || strings.EqualFold(key, t.profile.ID)
 }
 
 func (t *Tunnel) Ready() bool {

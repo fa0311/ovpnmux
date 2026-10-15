@@ -11,7 +11,7 @@ import (
 )
 
 // socks5 implements RFC 1928 CONNECT with optional RFC 1929 username/password.
-// The username selects the tunnel: empty or "any" for any, or a tunnel number.
+// The username selects the tunnel: empty or "any" for any, or a profile name.
 func (ss *session) socks5(ctx context.Context) {
 	br, c := ss.br, ss.conn
 	hdr := make([]byte, 2)

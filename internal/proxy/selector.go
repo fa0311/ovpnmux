@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,8 +14,9 @@ type Pool interface {
 	Ready() []*tunnel.Tunnel
 }
 
-// Selector picks a ready tunnel. Key "" or "any" means any tunnel, a number
-// means that tunnel. With ttl > 0 a client IP stays on the same tunnel for ttl.
+// Selector picks a ready tunnel. Key "" or "any" means any tunnel, anything
+// else names a profile (file name without .ovpn). With ttl > 0 a client IP
+// stays on the same automatically chosen tunnel for ttl.
 type Selector struct {
 	pool   Pool
 	ttl    time.Duration
@@ -38,16 +38,12 @@ func (s *Selector) Select(key, clientIP string) (*tunnel.Tunnel, error) {
 	key = strings.ToLower(strings.TrimSpace(key))
 	ready := s.pool.Ready()
 	if key != "" && key != "any" {
-		id, err := strconv.Atoi(key)
-		if err != nil {
-			return nil, fmt.Errorf("unknown selection key %q", key)
-		}
 		for _, t := range ready {
-			if t.ID == id {
+			if t.Matches(key) {
 				return t, nil
 			}
 		}
-		return nil, fmt.Errorf("tunnel %d is not ready", id)
+		return nil, fmt.Errorf("no ready tunnel for profile %q", key)
 	}
 	if len(ready) == 0 {
 		return nil, fmt.Errorf("no ready tunnel")

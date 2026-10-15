@@ -21,7 +21,7 @@ func (p fakePool) Ready() []*tunnel.Tunnel { return p }
 
 func start(t *testing.T, password string) (addr string, pool fakePool) {
 	t.Helper()
-	pool = fakePool{tunnel.NewReady(1, &routing.Dialer{}), tunnel.NewReady(2, &routing.Dialer{})}
+	pool = fakePool{tunnel.NewReady(1, "alpha", &routing.Dialer{}), tunnel.NewReady(2, "beta", &routing.Dialer{})}
 	srv := &Server{Selector: NewSelector(pool, 0), Password: password}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -64,7 +64,7 @@ func TestSocks5(t *testing.T) {
 	be := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "hello") }))
 	defer be.Close()
 
-	if got, err := get(t, addr, &proxy.Auth{User: "2", Password: "secret"}, be.URL); err != nil || got != "hello" {
+	if got, err := get(t, addr, &proxy.Auth{User: "beta", Password: "secret"}, be.URL); err != nil || got != "hello" {
 		t.Fatalf("got %q, %v", got, err)
 	}
 	if pool[0].Conns.Load() != 0 && pool[0].Bytes.Load() != 0 {
@@ -73,8 +73,8 @@ func TestSocks5(t *testing.T) {
 	if _, err := get(t, addr, &proxy.Auth{User: "any", Password: "wrong"}, be.URL); err == nil {
 		t.Error("wrong password should fail")
 	}
-	if _, err := get(t, addr, &proxy.Auth{User: "9", Password: "secret"}, be.URL); err == nil {
-		t.Error("unknown tunnel should fail")
+	if _, err := get(t, addr, &proxy.Auth{User: "gamma", Password: "secret"}, be.URL); err == nil {
+		t.Error("unknown profile should fail")
 	}
 	if _, err := get(t, addr, nil, be.URL); err == nil {
 		t.Error("missing auth should fail")
@@ -87,7 +87,7 @@ func TestSocks5(t *testing.T) {
 }
 
 func TestSelectorSticky(t *testing.T) {
-	pool := fakePool{tunnel.NewReady(1, nil), tunnel.NewReady(2, nil)}
+	pool := fakePool{tunnel.NewReady(1, "alpha", nil), tunnel.NewReady(2, "beta", nil)}
 	s := NewSelector(pool, time.Minute)
 	first, _ := s.Select("", "10.0.0.1")
 	for i := 0; i < 5; i++ {
@@ -95,10 +95,10 @@ func TestSelectorSticky(t *testing.T) {
 			t.Fatal("sticky selection changed")
 		}
 	}
-	if t3, _ := s.Select("2", "10.0.0.1"); t3.ID != 2 {
-		t.Error("key 2 should select tunnel 2")
+	if t3, _ := s.Select("Beta", "10.0.0.1"); t3.ID != 2 {
+		t.Error("profile name should select tunnel 2")
 	}
-	if _, err := s.Select("jp", ""); err == nil {
-		t.Error("unknown key should error")
+	if _, err := s.Select("gamma", ""); err == nil {
+		t.Error("unknown profile should error")
 	}
 }

@@ -4,7 +4,7 @@
 Docker で動かす前提で、必要な権限は `NET_ADMIN` と `/dev/net/tun` だけです。
 
 - `profiles/` に置いた `.ovpn` からランダムに選んで、設定した本数のトンネルを常に張っておく
-- 同じクライアント IP は一定時間同じトンネルに固定される。username に番号を書けばトンネルを指定できる
+- username にプロファイルのファイル名を書けばそのトンネルを使う。`any` なら自動選択で、同じクライアント IP は一定時間同じトンネルに固定される
 - 落ちたトンネルは別のプロファイルで自動的に張り直す
 - トンネルごとに routing table と fwmark を割り当て、プロキシは `SO_MARK` を付けて dial する。
   listen ポートはトンネル本数に関係なく 1 つ
@@ -18,12 +18,12 @@ cp /path/to/*.ovpn profiles/
 docker compose up -d
 curl -s localhost:9090/status
 curl -x socks5h://any:PASSWORD@SERVER:1080 https://ifconfig.me
-curl -x socks5h://2:PASSWORD@SERVER:1080 https://ifconfig.me   # トンネル 2 を指定
+curl -x socks5h://tokyo-1:PASSWORD@SERVER:1080 https://ifconfig.me   # profiles/tokyo-1.ovpn のトンネルを指定
 ```
 
 ## プロファイル
 
-`profiles/` 以下の `*.ovpn` がすべて候補になります (サブディレクトリも可)。
+`profiles/` 以下の `*.ovpn` がすべて候補になります (サブディレクトリも可)。ファイル名 (拡張子なし) がそのまま SOCKS5 の username になります。張られていないプロファイルを指定すると接続は失敗します。どれが張られているかは `/status` で見えます。
 
 - 証明書や鍵、`auth-user-pass` はインラインで書いてください。別ファイル参照は読めません
 - `up` / `down` / `plugin` / `script-security` / `management` などプログラムを実行する指示を含むプロファイルは読み込まれません

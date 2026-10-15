@@ -1,6 +1,6 @@
 listen: 0.0.0.0:1080          # SOCKS5
 admin_listen: 0.0.0.0:9090    # GET /status, GET /healthz
-password: change-me           # SOCKS5 password (any username); empty = no authentication
+password: change-me           # SOCKS5 password; username = profile file name or "any". Empty = no authentication
 profiles_dir: /profiles       # every *.ovpn below this directory is a candidate
 tunnels: 3                    # tunnels kept up at the same time
 sticky_ttl: 10m               # a client IP stays on the same tunnel this long; 0 = round robin
