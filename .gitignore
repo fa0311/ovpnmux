@@ -1,0 +1,5 @@
+/config.yaml
+/.env
+/data/
+/profiles/vpngate/
+/bin/

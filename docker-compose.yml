@@ -1,0 +1,37 @@
+services:
+  proxy:
+    image: ghcr.io/${GHCR_OWNER:?set GHCR_OWNER in .env}/vpngate-proxy:main
+    cap_add: [NET_ADMIN]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    sysctls:
+      net.ipv4.conf.all.rp_filter: "0"
+      net.ipv4.conf.default.rp_filter: "0"
+      net.ipv6.conf.all.disable_ipv6: "1"
+    ports:
+      - "${LAN_IP:-127.0.0.1}:1080:1080"   # proxy, LAN only
+      - "127.0.0.1:9090:9090"              # admin, host only
+    environment:
+      VGP_PASSWORD: ${VGP_PASSWORD:-change-me}
+    volumes:
+      - ./config.yaml:/etc/vpngate-proxy/config.yaml:ro
+      - profiles:/profiles
+      - data:/var/lib/vpngate-proxy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/healthz"]
+      interval: 30s
+      start_period: 2m
+
+  # Optional. Writes VPN Gate servers into the shared profiles volume every 10 minutes.
+  # Without it, put your own *.ovpn files into the volume (the image ships profiles/examples).
+  feeder:
+    image: ghcr.io/${GHCR_OWNER:?set GHCR_OWNER in .env}/vpngate-proxy:main
+    entrypoint: ["vpngate-feeder"]
+    command: ["-out", "/profiles/vpngate", "-interval", "10m", "-countries", "${FEEDER_COUNTRIES:-JP,KR}"]
+    volumes:
+      - profiles:/profiles
+    restart: unless-stopped
+
+volumes:
+  profiles: {}
+  data: {}
